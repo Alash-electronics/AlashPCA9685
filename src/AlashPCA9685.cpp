@@ -57,7 +57,7 @@ bool AlashPCA9685::probe(uint8_t address) {
     return false;
   }
   write8(REG_MODE2, MODE2_OUTDRV);
-  for (uint8_t i = 0; i < 16; i++) _s[i].ticks = 0xFFFF;
+  for (uint8_t i = 0; i < ALASH_PCA9685_CHANNELS; i++) _s[i].ticks = 0xFFFF;
   if (!setPrescale()) return false;
   _err = ERR_OK;
   return true;
@@ -88,7 +88,7 @@ void AlashPCA9685::setFrequency(float hz) {
   if (hz < 24.0f) hz = 24.0f;
   if (hz > 1526.0f) hz = 1526.0f;
   _freq = hz;
-  for (uint8_t i = 0; i < 16; i++) _s[i].ticks = 0xFFFF;
+  for (uint8_t i = 0; i < ALASH_PCA9685_CHANNELS; i++) _s[i].ticks = 0xFFFF;
   setPrescale();
 }
 
@@ -130,7 +130,7 @@ void AlashPCA9685::setPWM(uint8_t channel, uint16_t on, uint16_t off) {
 void AlashPCA9685::setLevel(uint8_t channel, bool high) {
   if (high) setPWM(channel, 0x1000, 0);       // бит 12 в ON: всегда включён
   else setPWM(channel, 0, 0x1000);            // бит 12 в OFF: всегда выключен
-  if (channel < 16) _s[channel].ticks = 0xFFFF;
+  if (channel < ALASH_PCA9685_CHANNELS) _s[channel].ticks = 0xFFFF;
 }
 
 void AlashPCA9685::setDuty(uint8_t channel, float percent) {
@@ -138,7 +138,7 @@ void AlashPCA9685::setDuty(uint8_t channel, float percent) {
   if (percent <= 0.0f) { setLevel(channel, false); return; }
   if (percent >= 100.0f) { setLevel(channel, true); return; }
   setPWM(channel, 0, (uint16_t)lroundf(percent * 40.96f));
-  _s[channel].ticks = 0xFFFF;
+  if (channel < ALASH_PCA9685_CHANNELS) _s[channel].ticks = 0xFFFF;
 }
 
 uint16_t AlashPCA9685::usToTicks(float us) const {
@@ -151,7 +151,7 @@ uint16_t AlashPCA9685::usToTicks(float us) const {
 void AlashPCA9685::setPulseUs(uint8_t channel, uint16_t us) {
   if (!check(channel)) return;
   setPWM(channel, 0, usToTicks(us));
-  _s[channel].ticks = 0xFFFF;
+  if (channel < ALASH_PCA9685_CHANNELS) _s[channel].ticks = 0xFFFF;
 }
 
 void AlashPCA9685::allOff() {
@@ -160,7 +160,7 @@ void AlashPCA9685::allOff() {
   _wire->write((uint8_t)0); _wire->write((uint8_t)0);
   _wire->write((uint8_t)0); _wire->write((uint8_t)0x10);   // ALL_LED_OFF_H бит 4: все каналы выключены
   _err = _wire->endTransmission() == 0 ? ERR_OK : ERR_I2C;
-  for (uint8_t i = 0; i < 16; i++) { _s[i].active = false; _s[i].ticks = 0xFFFF; }
+  for (uint8_t i = 0; i < ALASH_PCA9685_CHANNELS; i++) { _s[i].active = false; _s[i].ticks = 0xFFFF; }
   _moving = 0;
 }
 
@@ -176,30 +176,41 @@ float AlashPCA9685::angleToUs(const Servo &s, float deg) const {
   return mid + (s.maxUs - mid) * (deg - 90.0f) / 90.0f;
 }
 
+// Углы хранятся в десятых долях градуса (int16): так состояние канала занимает 23 байта вместо 37
+static int16_t toTenths(float deg) { return (int16_t)lroundf(deg * 10.0f); }
+
+bool AlashPCA9685::checkServo(uint8_t channel) {
+  if (channel >= ALASH_PCA9685_CHANNELS) {
+    _err = ERR_BAD_CHANNEL;
+    return false;
+  }
+  return true;
+}
+
 void AlashPCA9685::servo(uint8_t channel, float degrees) {
-  if (!check(channel)) return;
+  if (!checkServo(channel)) return;
   Servo &s = _s[channel];
   if (degrees < s.minDeg) degrees = s.minDeg;
   if (degrees > s.maxDeg) degrees = s.maxDeg;
-  s.angle = degrees;
+  s.angle = toTenths(degrees);
   s.touched = true;
   if (s.active) { s.active = false; if (_moving) _moving--; }
-  uint16_t t = usToTicks(angleToUs(s, degrees));
+  uint16_t t = usToTicks(angleToUs(s, s.angle / 10.0f));
   if (t == s.ticks) return;                    // тот же импульс: по I2C ничего не шлём
   s.ticks = t;
   setPWM(channel, 0, t);
 }
 
-float AlashPCA9685::servoAngle(uint8_t channel) const { return channel < 16 ? _s[channel].angle : NAN; }
+float AlashPCA9685::servoAngle(uint8_t channel) const { return channel < ALASH_PCA9685_CHANNELS ? _s[channel].angle / 10.0f : NAN; }
 
 void AlashPCA9685::servoOff(uint8_t channel) {
   if (!check(channel)) return;
-  if (_s[channel].active) { _s[channel].active = false; if (_moving) _moving--; }
+  if (channel < ALASH_PCA9685_CHANNELS && _s[channel].active) { _s[channel].active = false; if (_moving) _moving--; }
   setLevel(channel, false);
 }
 
 void AlashPCA9685::setServoRange(uint8_t channel, uint16_t minUs, uint16_t maxUs, int16_t centerOffsetUs) {
-  if (!check(channel) || minUs >= maxUs) return;
+  if (!checkServo(channel) || minUs >= maxUs) return;
   _s[channel].minUs = minUs;
   _s[channel].maxUs = maxUs;
   _s[channel].centerOff = centerOffsetUs;
@@ -208,25 +219,25 @@ void AlashPCA9685::setServoRange(uint8_t channel, uint16_t minUs, uint16_t maxUs
 }
 
 void AlashPCA9685::setAllServoRange(uint16_t minUs, uint16_t maxUs) {
-  for (uint8_t i = 0; i < 16; i++) setServoRange(i, minUs, maxUs, _s[i].centerOff);
+  for (uint8_t i = 0; i < ALASH_PCA9685_CHANNELS; i++) setServoRange(i, minUs, maxUs, _s[i].centerOff);
 }
 
 void AlashPCA9685::setServoLimits(uint8_t channel, float minDeg, float maxDeg) {
-  if (!check(channel) || minDeg >= maxDeg) return;
-  _s[channel].minDeg = minDeg < 0 ? 0 : minDeg;
-  _s[channel].maxDeg = maxDeg > 180 ? 180 : maxDeg;
+  if (!checkServo(channel) || minDeg >= maxDeg) return;
+  _s[channel].minDeg = minDeg < 0 ? 0 : (uint8_t)lroundf(minDeg);
+  _s[channel].maxDeg = maxDeg > 180 ? 180 : (uint8_t)lroundf(maxDeg);
   _s[channel].touched = true;
 }
 
 void AlashPCA9685::invertServo(uint8_t channel, bool on) {
-  if (!check(channel)) return;
+  if (!checkServo(channel)) return;
   _s[channel].inverted = on;
   _s[channel].touched = true;
   _s[channel].ticks = 0xFFFF;
 }
 
 void AlashPCA9685::servoMove(uint8_t channel, float degrees, uint16_t durationMs) {
-  if (!check(channel)) return;
+  if (!checkServo(channel)) return;
   Servo &s = _s[channel];
   if (degrees < s.minDeg) degrees = s.minDeg;
   if (degrees > s.maxDeg) degrees = s.maxDeg;
@@ -237,7 +248,7 @@ void AlashPCA9685::servoMove(uint8_t channel, float degrees, uint16_t durationMs
   if (!s.active) _moving++;
   s.active = true;
   s.from = s.angle;
-  s.to = degrees;
+  s.to = toTenths(degrees);
   s.startMs = millis();
   s.durMs = durationMs;
 }
@@ -247,28 +258,26 @@ void AlashPCA9685::pose(const uint8_t *channels, const float *angles, uint8_t co
 }
 
 void AlashPCA9685::poseAll(const float *angles16, uint16_t durationMs) {
-  for (uint8_t i = 0; i < 16; i++) servoMove(i, angles16[i], durationMs);
+  for (uint8_t i = 0; i < ALASH_PCA9685_CHANNELS; i++) servoMove(i, angles16[i], durationMs);
 }
 
 // Плавное начало и конец: угол меняется по косинусу, а не рывком
 bool AlashPCA9685::run() {
   if (_moving == 0) return false;
   uint32_t now = millis();
-  for (uint8_t i = 0; i < 16; i++) {
+  for (uint8_t i = 0; i < ALASH_PCA9685_CHANNELS; i++) {
     Servo &s = _s[i];
     if (!s.active) continue;
     uint32_t el = now - s.startMs;
     if (el >= s.durMs) {
-      servo(i, s.to);                          // servo() снимает active и уменьшает счётчик
+      servo(i, s.to / 10.0f);                  // servo() снимает active и уменьшает счётчик
     } else {
       float t = (float)el / s.durMs;
       float e = 0.5f - 0.5f * cosf(3.14159265f * t);
-      bool keep = s.active;
-      float ang = s.from + (s.to - s.from) * e;
+      float ang = (s.from + (s.to - s.from) * e) / 10.0f;
+      s.angle = toTenths(ang);
       uint16_t tk = usToTicks(angleToUs(s, ang));
-      s.angle = ang;
       if (tk != s.ticks) { s.ticks = tk; setPWM(i, 0, tk); }
-      s.active = keep;
     }
   }
   return _moving != 0;
@@ -358,7 +367,7 @@ void AlashPCA9685::diagnose(Print &out) {
 }
 
 void AlashPCA9685::printCalibration(Print &out) {
-  for (uint8_t i = 0; i < 16; i++) {
+  for (uint8_t i = 0; i < ALASH_PCA9685_CHANNELS; i++) {
     const Servo &s = _s[i];
     if (!s.touched) continue;
     out.print(F("pca.setServoRange("));
@@ -366,7 +375,7 @@ void AlashPCA9685::printCalibration(Print &out) {
     out.println(F(");"));
     if (s.minDeg != 0 || s.maxDeg != 180) {
       out.print(F("pca.setServoLimits("));
-      out.print(i); out.print(F(", ")); out.print(s.minDeg, 0); out.print(F(", ")); out.print(s.maxDeg, 0);
+      out.print(i); out.print(F(", ")); out.print((int)s.minDeg); out.print(F(", ")); out.print((int)s.maxDeg);
       out.println(F(");"));
     }
     if (s.inverted) {

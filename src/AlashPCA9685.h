@@ -7,6 +7,11 @@
 #include <Arduino.h>
 #include <Wire.h>
 
+// Сколько каналов хранит состояние (можно уменьшить до #include, чтобы сэкономить память Uno: #define ALASH_PCA9685_CHANNELS 8)
+#ifndef ALASH_PCA9685_CHANNELS
+#define ALASH_PCA9685_CHANNELS 16
+#endif
+
 class AlashPCA9685 {
  public:
   enum Error : uint8_t {
@@ -81,20 +86,19 @@ class AlashPCA9685 {
   float _actual = 50.0f;                     // частота, которую реально дал делитель
   uint32_t _osc = 25000000UL;
 
+  // Состояние одного канала. Компактно (23 байта), потому что на Uno всего 2 КБ памяти: углы хранятся в десятых долях градуса.
   struct Servo {
     uint16_t minUs = 600, maxUs = 2400;
     int16_t centerOff = 0;
-    float minDeg = 0, maxDeg = 180;
-    bool inverted = false;
-    float angle = 90;
-    bool active = false;                     // идёт плавное движение
-    float from = 0, to = 0;
+    uint8_t minDeg = 0, maxDeg = 180;
+    int16_t angle = 900;                     // текущий угол, 0,1°
+    int16_t from = 0, to = 0;                // начало и цель плавного движения, 0,1°
     uint32_t startMs = 0;
     uint16_t durMs = 0;
-    bool touched = false;                    // канал использовался как серво
     uint16_t ticks = 0xFFFF;                 // последнее записанное значение (чтобы не слать лишнее по I2C)
+    bool inverted = false, active = false, touched = false;
   };
-  Servo _s[16];
+  Servo _s[ALASH_PCA9685_CHANNELS];
   uint8_t _moving = 0;
 
   bool probe(uint8_t address);
@@ -103,7 +107,8 @@ class AlashPCA9685 {
   bool setPrescale();
   uint16_t usToTicks(float us) const;
   float angleToUs(const Servo &s, float deg) const;
-  bool check(uint8_t channel);
+  bool check(uint8_t channel);                // канал 0..15 (любой выход)
+  bool checkServo(uint8_t channel);           // канал, для которого хранится состояние сервопривода
 };
 
 #endif  // ALASH_PCA9685_H

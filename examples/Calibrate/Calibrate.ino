@@ -16,8 +16,8 @@ void setup() {
     Serial.println(pca.errorText());
     while (true) delay(1000);
   }
-  Serial.println("Отправьте импульс в мкс (например 1500). Подберите край 0 градусов, потом 180.");
-  Serial.println("Команда: l = запомнить как 0 градусов, h = запомнить как 180, m = показать итог");
+  Serial.println(F("Отправьте импульс в мкс (например 1500). Подберите край 0 градусов, потом 180."));
+  Serial.println(F("Команда: l = запомнить как 0 градусов, h = запомнить как 180, m = показать итог"));
   pca.setPulseUs(CHANNEL, 1500);
 }
 
@@ -26,12 +26,12 @@ uint16_t lastUs = 1500;
 void loop() {
   if (!Serial.available()) return;
   char c = Serial.peek();
-  if (c == 'l') { lowUs = lastUs; Serial.print("0 градусов = "); Serial.println(lowUs); Serial.read(); return; }
-  if (c == 'h') { highUs = lastUs; Serial.print("180 градусов = "); Serial.println(highUs); Serial.read(); return; }
+  if (c == 'l') { lowUs = lastUs; Serial.print(F("0 градусов = ")); Serial.println(lowUs); Serial.read(); return; }
+  if (c == 'h') { highUs = lastUs; Serial.print(F("180 градусов = ")); Serial.println(highUs); Serial.read(); return; }
   if (c == 'm') {
     Serial.read();
     pca.setServoRange(CHANNEL, lowUs, highUs, 0);
-    Serial.println("Вставьте в setup():");
+    Serial.println(F("Вставьте в setup():"));
     pca.printCalibration(Serial);         // готовая строка setServoRange(...)
     pca.servo(CHANNEL, 90);
     return;
@@ -40,6 +40,6 @@ void loop() {
   if (us >= 400 && us <= 2600) {
     lastUs = us;
     pca.setPulseUs(CHANNEL, us);
-    Serial.print("Импульс "); Serial.print(us); Serial.println(" мкс");
+    Serial.print(F("Импульс ")); Serial.print(us); Serial.println(F(" мкс"));
   }
 }
