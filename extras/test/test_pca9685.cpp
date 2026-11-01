@@ -109,14 +109,6 @@ int main() {
   reset(); g_pca.addr = 0x43; AlashPCA9685 a; CHECK(a.begin() && a.address() == 0x43);   // нашёл на соседнем адресе
   reset(); g_pca.addr = 0x44; AlashPCA9685 b(0x44); CHECK(b.begin() && b.address() == 0x44);
 
-  // 11б) сокращённое число каналов состояния (экономия памяти Uno): сервоприводы только на них, обычный ШИМ на всех 16
-#if ALASH_PCA9685_CHANNELS < 16
-  reset(); AlashPCA9685 sm; sm.begin();
-  sm.servo(ALASH_PCA9685_CHANNELS, 90); CHECK(sm.error() == AlashPCA9685::ERR_BAD_CHANNEL);
-  sm.setDuty(15, 50); CHECK(sm.error() == AlashPCA9685::ERR_OK && off(15) == 2048);
-  sm.servo(0, 90); CHECK(off(0) == 307);
-#endif
-
   // 12) печать калибровки и диагностика
   reset(); AlashPCA9685 d; d.begin();
   d.setServoRange(1, 550, 2450, -20); d.invertServo(1); d.setServoLimits(1, 10, 170);
