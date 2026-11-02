@@ -1,4 +1,6 @@
-// AlashPCA9685 на ESP32 со своими пинами I2C: begin(SDA, SCL).
+// [ru] AlashPCA9685 на ESP32 со своими пинами I2C: begin(SDA, SCL).
+// [kk] AlashPCA9685 ESP32-де өз I2C пиндерімен: begin(SDA, SCL).
+// [en] AlashPCA9685 on ESP32 with its own I2C pins: begin(SDA, SCL).
 #include <AlashPCA9685.h>
 
 AlashPCA9685 pca;

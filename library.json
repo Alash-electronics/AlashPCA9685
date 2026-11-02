@@ -1,6 +1,6 @@
 {
   "name": "AlashPCA9685",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Easy PCA9685 servo/PWM library: angles, calibration, smooth moves, poses, clear tips (ru/kk/en), no Adafruit library needed",
   "keywords": "PCA9685, servo, PWM, 16 channel, robot, I2C, calibration",
   "repository": {
